@@ -2,3 +2,6 @@ project_id = "pnabdsgbkvriwevcksca"
 
 [functions.token-scanner]
 verify_jwt = false
+
+[functions.auto-sniper]
+verify_jwt = false

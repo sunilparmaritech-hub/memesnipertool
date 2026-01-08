@@ -4,26 +4,28 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useTokenScanner, ScannedToken } from "@/hooks/useTokenScanner";
 import { useSniperSettings } from "@/hooks/useSniperSettings";
+import { useAutoSniper, SnipeDecision } from "@/hooks/useAutoSniper";
 import { 
   Search, 
   RefreshCw, 
-  SlidersHorizontal, 
   Sparkles, 
   Shield, 
-  TrendingUp, 
   Users, 
   Clock,
   Zap,
   AlertTriangle,
   CheckCircle,
-  ExternalLink,
+  XCircle,
   Loader2,
   Droplets,
   Lock,
+  Bot,
+  Play,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 
 const getRiskColor = (score: number) => {
@@ -68,7 +70,7 @@ const formatCurrency = (value: number) => {
   return `$${value.toFixed(2)}`;
 };
 
-const TokenRow = ({ token }: { token: ScannedToken }) => {
+const TokenRow = ({ token, onSnipe }: { token: ScannedToken; onSnipe?: () => void }) => {
   const createdAgo = token.createdAt 
     ? formatDistanceToNow(new Date(token.createdAt), { addSuffix: true })
     : 'Unknown';
@@ -144,7 +146,7 @@ const TokenRow = ({ token }: { token: ScannedToken }) => {
               <Shield className="w-3 h-3 mr-1" />
               {getRiskLabel(token.riskScore)}
             </Badge>
-            <Button size="sm" variant="glow" className="ml-2">
+            <Button size="sm" variant="glow" className="ml-2" onClick={onSnipe}>
               <Zap className="w-3 h-3 mr-1" />
               Snipe
             </Button>
@@ -155,12 +157,50 @@ const TokenRow = ({ token }: { token: ScannedToken }) => {
   );
 };
 
+// Decision display for auto-sniper results
+const DecisionCard = ({ decision }: { decision: SnipeDecision }) => {
+  const { token, approved, reasons, tradeParams } = decision;
+  
+  return (
+    <Card className={`border ${approved ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2">
+            {approved ? (
+              <CheckCircle className="w-5 h-5 text-green-500" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-500" />
+            )}
+            <span className="font-semibold text-foreground">{token.symbol}</span>
+            <Badge variant="outline" className="text-xs">{token.name}</Badge>
+          </div>
+          {approved && tradeParams && (
+            <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+              Ready: {tradeParams.amount} SOL @ {tradeParams.slippage}% slip
+            </Badge>
+          )}
+        </div>
+        <div className="space-y-1">
+          {reasons.map((reason, i) => (
+            <p key={i} className={`text-xs ${reason.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+              {reason}
+            </p>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 const Scanner = () => {
   const { tokens, loading, lastScan, apiCount, errors, scanTokens, getTopOpportunities } = useTokenScanner();
   const { settings } = useSniperSettings();
+  const { loading: sniperLoading, result: sniperResult, evaluateTokens, clearResult } = useAutoSniper();
   const [searchTerm, setSearchTerm] = useState('');
   const [chainFilter, setChainFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
+  const [autoSnipeEnabled, setAutoSnipeEnabled] = useState(false);
+  const [executeOnApproval, setExecuteOnApproval] = useState(false);
 
   // Auto-scan on mount
   useEffect(() => {
@@ -172,6 +212,44 @@ const Scanner = () => {
   const handleScan = () => {
     scanTokens(settings?.min_liquidity || 300, chainFilter === 'all' ? ['solana', 'ethereum', 'bsc'] : [chainFilter]);
   };
+
+  // Run auto-sniper when enabled and tokens change
+  const runAutoSniper = useCallback(async () => {
+    if (!autoSnipeEnabled || tokens.length === 0) return;
+    
+    const tokenData = tokens.map(t => ({
+      address: t.address,
+      name: t.name,
+      symbol: t.symbol,
+      chain: t.chain,
+      liquidity: t.liquidity,
+      liquidityLocked: t.liquidityLocked,
+      lockPercentage: t.lockPercentage,
+      buyerPosition: t.buyerPosition,
+      riskScore: t.riskScore,
+      categories: [], // Would come from token metadata
+    }));
+    
+    await evaluateTokens(tokenData, executeOnApproval);
+  }, [autoSnipeEnabled, tokens, executeOnApproval, evaluateTokens]);
+
+  // Snipe single token
+  const handleSnipeToken = useCallback(async (token: ScannedToken) => {
+    const tokenData = [{
+      address: token.address,
+      name: token.name,
+      symbol: token.symbol,
+      chain: token.chain,
+      liquidity: token.liquidity,
+      liquidityLocked: token.liquidityLocked,
+      lockPercentage: token.lockPercentage,
+      buyerPosition: token.buyerPosition,
+      riskScore: token.riskScore,
+      categories: [],
+    }];
+    
+    await evaluateTokens(tokenData, true);
+  }, [evaluateTokens]);
 
   const filteredTokens = tokens.filter(token => {
     const matchesSearch = !searchTerm || 
@@ -214,20 +292,117 @@ const Scanner = () => {
                 {lastScan && ` • Last scan: ${formatDistanceToNow(new Date(lastScan), { addSuffix: true })}`}
               </p>
             </div>
-            <Button
-              variant="glow"
-              onClick={handleScan}
-              disabled={loading}
-              className="min-w-[140px]"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              {loading ? "Scanning..." : "Scan Now"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="glow"
+                onClick={handleScan}
+                disabled={loading}
+                className="min-w-[140px]"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {loading ? "Scanning..." : "Scan Now"}
+              </Button>
+            </div>
           </div>
+
+          {/* Auto-Sniper Control Panel */}
+          <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+            <CardContent className="p-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/20">
+                    <Bot className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Auto-Sniper Engine</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Rule-based evaluation: Liquidity • Lock Status • Category • Position • Risk API
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={autoSnipeEnabled}
+                      onCheckedChange={(checked) => {
+                        setAutoSnipeEnabled(checked);
+                        if (!checked) clearResult();
+                      }}
+                    />
+                    <span className="text-sm text-muted-foreground">Enable</span>
+                  </div>
+                  
+                  {autoSnipeEnabled && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={executeOnApproval}
+                          onCheckedChange={setExecuteOnApproval}
+                        />
+                        <span className="text-sm text-muted-foreground">Auto-Execute</span>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={runAutoSniper}
+                        disabled={sniperLoading || tokens.length === 0}
+                      >
+                        {sniperLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                        ) : (
+                          <Play className="w-4 h-4 mr-1" />
+                        )}
+                        Run Rules
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              {/* Sniper Result Summary */}
+              {sniperResult && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    <Badge variant="outline">
+                      Evaluated: {sniperResult.summary.total}
+                    </Badge>
+                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Approved: {sniperResult.summary.approved}
+                    </Badge>
+                    <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Rejected: {sniperResult.summary.rejected}
+                    </Badge>
+                    {sniperResult.summary.executed > 0 && (
+                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                        <Zap className="w-3 h-3 mr-1" />
+                        Executed: {sniperResult.summary.executed}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Auto-Sniper Decisions */}
+          {sniperResult && sniperResult.decisions.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-foreground mb-3">Rule Evaluation Results</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                {sniperResult.decisions.map((decision, idx) => (
+                  <DecisionCard key={idx} decision={decision} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Top Opportunities Banner */}
           {topOpportunities.length > 0 && (
@@ -349,7 +524,11 @@ const Scanner = () => {
           ) : (
             <div className="space-y-3">
               {filteredTokens.map((token) => (
-                <TokenRow key={token.id} token={token} />
+                <TokenRow 
+                  key={token.id} 
+                  token={token} 
+                  onSnipe={() => handleSnipeToken(token)}
+                />
               ))}
             </div>
           )}
