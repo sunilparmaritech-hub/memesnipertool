@@ -1,202 +1,388 @@
 import Header from "@/components/Header";
-import StatsCard from "@/components/StatsCard";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, Wallet } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { usePositions, Position } from "@/hooks/usePositions";
+import { 
+  TrendingUp, 
+  TrendingDown,
+  RefreshCw,
+  Loader2,
+  DollarSign,
+  Target,
+  ShieldAlert,
+  Clock,
+  Play,
+  XCircle,
+  CheckCircle,
+  AlertTriangle,
+} from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { formatDistanceToNow } from "date-fns";
 
-const holdings = [
-  {
-    name: "Pepe The Frog",
-    symbol: "PEPE",
-    amount: "12,500,000",
-    value: "$154.25",
-    pnl: "+$89.50",
-    pnlPercent: 138.2,
-    avgBuy: "$0.00000052",
-  },
-  {
-    name: "Degen Cat",
-    symbol: "DCAT",
-    amount: "5,200,000",
-    value: "$16.69",
-    pnl: "-$3.21",
-    pnlPercent: -16.1,
-    avgBuy: "$0.00000382",
-  },
-  {
-    name: "Moon Rocket",
-    symbol: "MOON",
-    amount: "890,000",
-    value: "$40.58",
-    pnl: "+$28.40",
-    pnlPercent: 233.5,
-    avgBuy: "$0.00001367",
-  },
-];
+const formatCurrency = (value: number) => {
+  if (Math.abs(value) >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
+  if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+  return `$${value.toFixed(2)}`;
+};
 
-const recentTrades = [
-  { type: "buy", token: "PEPE", amount: "5M", value: "$25.50", time: "2h ago" },
-  { type: "sell", token: "WOJAK", amount: "2M", value: "$18.20", time: "4h ago" },
-  { type: "buy", token: "MOON", amount: "500K", value: "$12.30", time: "6h ago" },
-  { type: "buy", token: "DCAT", amount: "1M", value: "$3.80", time: "12h ago" },
-];
+const PositionCard = ({ position, onClose }: { position: Position; onClose: () => void }) => {
+  const isProfit = position.profit_loss_percent >= 0;
+  const isPendingTakeProfit = position.profit_loss_percent >= position.profit_take_percent * 0.8;
+  const isPendingStopLoss = position.profit_loss_percent <= -position.stop_loss_percent * 0.8;
+
+  return (
+    <Card className={`border ${
+      isPendingTakeProfit ? 'border-green-500/50 bg-green-500/5' : 
+      isPendingStopLoss ? 'border-red-500/50 bg-red-500/5' : 
+      'border-border'
+    }`}>
+      <CardContent className="p-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Token Info */}
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold text-foreground">{position.token_symbol}</h3>
+              <Badge variant="outline" className="text-xs">{position.token_name}</Badge>
+              <Badge variant="outline" className="text-xs capitalize">{position.chain}</Badge>
+              {position.status === 'open' ? (
+                <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Open</Badge>
+              ) : (
+                <Badge variant="secondary">Closed</Badge>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Entry: ${position.entry_price.toFixed(8)} • {formatDistanceToNow(new Date(position.created_at), { addSuffix: true })}
+            </div>
+          </div>
+
+          {/* P&L Display */}
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-0.5">Current Price</p>
+              <p className="font-semibold text-foreground">${position.current_price.toFixed(8)}</p>
+            </div>
+            
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-0.5">P&L %</p>
+              <div className={`flex items-center gap-1 font-bold ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
+                {isProfit ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                {isProfit ? '+' : ''}{position.profit_loss_percent.toFixed(2)}%
+              </div>
+            </div>
+
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-0.5">P&L Value</p>
+              <p className={`font-semibold ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
+                {isProfit ? '+' : ''}{formatCurrency(position.profit_loss_value)}
+              </p>
+            </div>
+
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-0.5">Targets</p>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-500">TP: {position.profit_take_percent}%</span>
+                <span className="text-red-500">SL: {position.stop_loss_percent}%</span>
+              </div>
+            </div>
+
+            {position.status === 'open' && (
+              <Button size="sm" variant="outline" onClick={onClose}>
+                <XCircle className="w-3 h-3 mr-1" />
+                Close
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Exit Info for Closed Positions */}
+        {position.status === 'closed' && position.exit_reason && (
+          <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-sm">
+            {position.exit_reason === 'take_profit' ? (
+              <CheckCircle className="w-4 h-4 text-green-500" />
+            ) : position.exit_reason === 'stop_loss' ? (
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            ) : (
+              <XCircle className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span className="text-muted-foreground">
+              Closed via {position.exit_reason?.replace('_', ' ')} at ${position.exit_price?.toFixed(8)}
+              {position.closed_at && ` • ${formatDistanceToNow(new Date(position.closed_at), { addSuffix: true })}`}
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const Portfolio = () => {
+  const { 
+    openPositions, 
+    closedPositions, 
+    loading, 
+    checkingExits,
+    lastExitCheck,
+    exitResults,
+    checkExitConditions,
+    closePosition,
+    fetchPositions,
+  } = usePositions();
+
+  const [autoMonitor, setAutoMonitor] = useState(false);
+  const [autoExecute, setAutoExecute] = useState(false);
+  const monitorInterval = 30; // seconds
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-monitoring effect
+  useEffect(() => {
+    if (autoMonitor && openPositions.length > 0) {
+      intervalRef.current = setInterval(() => {
+        checkExitConditions(autoExecute);
+      }, monitorInterval * 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    }
+  }, [autoMonitor, autoExecute, monitorInterval, openPositions.length, checkExitConditions]);
+
+  const handleClosePosition = async (position: Position) => {
+    await closePosition(position.id, position.current_price);
+  };
+
+  // Calculate totals
+  const totalValue = openPositions.reduce((sum, p) => sum + p.current_value, 0);
+  const totalPnL = openPositions.reduce((sum, p) => sum + p.profit_loss_value, 0);
+  const totalPnLPercent = openPositions.length > 0 
+    ? (totalPnL / openPositions.reduce((sum, p) => sum + p.entry_value, 0)) * 100 
+    : 0;
+
+  const recentExits = exitResults.filter(r => r.action !== 'hold');
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
 
       {/* Background Effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/2 left-1/3 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/3 left-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
       </div>
 
       <main className="relative pt-20 md:pt-24 pb-8">
         <div className="container mx-auto px-4">
           {/* Page Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Portfolio
-            </h1>
-            <p className="text-muted-foreground">
-              Track your holdings and trading performance
-            </p>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+                Portfolio & Auto-Exit
+              </h1>
+              <p className="text-muted-foreground">
+                Track positions and auto-exit on profit/loss targets
+                {lastExitCheck && ` • Last check: ${formatDistanceToNow(new Date(lastExitCheck), { addSuffix: true })}`}
+              </p>
+            </div>
+            <Button
+              variant="glow"
+              onClick={fetchPositions}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Refresh
+            </Button>
           </div>
 
-          {/* Portfolio Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatsCard
-              title="Total Value"
-              value="$211.52"
-              change="+$114.69"
-              changeType="positive"
-              icon={Wallet}
-            />
-            <StatsCard
-              title="Total P&L"
-              value="+118.3%"
-              change="24h"
-              changeType="positive"
-              icon={TrendingUp}
-            />
-            <StatsCard
-              title="Holdings"
-              value="3"
-              changeType="neutral"
-              icon={PieChart}
-            />
-            <StatsCard
-              title="Total Trades"
-              value="47"
-              change="+12 this week"
-              changeType="positive"
-              icon={BarChart3}
-            />
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-6">
-            {/* Holdings */}
-            <div className="lg:col-span-2 space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Holdings</h2>
-              <div className="space-y-3">
-                {holdings.map((holding, index) => (
-                  <div
-                    key={index}
-                    className="glass rounded-xl p-4 hover:border-primary/30 transition-all animate-fade-in"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                          <span className="text-sm font-bold text-primary">
-                            {holding.symbol[0]}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{holding.name}</h3>
-                          <p className="text-sm text-muted-foreground font-mono">
-                            ${holding.symbol}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-foreground font-mono">
-                          {holding.value}
-                        </p>
-                        <p
-                          className={`text-sm font-mono ${
-                            holding.pnlPercent >= 0 ? "text-success" : "text-destructive"
-                          }`}
-                        >
-                          {holding.pnl} ({holding.pnlPercent >= 0 ? "+" : ""}
-                          {holding.pnlPercent.toFixed(1)}%)
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex gap-4">
-                        <span className="text-muted-foreground">
-                          Amount:{" "}
-                          <span className="text-foreground font-mono">{holding.amount}</span>
-                        </span>
-                        <span className="text-muted-foreground">
-                          Avg Buy:{" "}
-                          <span className="text-foreground font-mono">{holding.avgBuy}</span>
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          Buy
-                        </Button>
-                        <Button variant="destructive" size="sm">
-                          Sell
-                        </Button>
-                      </div>
-                    </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <DollarSign className="w-5 h-5 text-blue-400" />
                   </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Value</p>
+                    <p className="text-xl font-bold text-foreground">{formatCurrency(totalValue)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                    {totalPnL >= 0 ? (
+                      <TrendingUp className="w-5 h-5 text-green-400" />
+                    ) : (
+                      <TrendingDown className="w-5 h-5 text-red-400" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total P&L</p>
+                    <p className={`text-xl font-bold ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)} ({totalPnLPercent.toFixed(2)}%)
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/20">
+                    <Target className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Open Positions</p>
+                    <p className="text-xl font-bold text-foreground">{openPositions.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted">
+                    <Clock className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Closed Positions</p>
+                    <p className="text-xl font-bold text-foreground">{closedPositions.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Auto-Exit Control Panel */}
+          <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+            <CardContent className="p-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/20">
+                    <ShieldAlert className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Auto-Exit Monitor</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Continuously tracks prices and triggers exits at TP/SL thresholds
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={autoMonitor}
+                      onCheckedChange={setAutoMonitor}
+                      disabled={openPositions.length === 0}
+                    />
+                    <span className="text-sm text-muted-foreground">Monitor</span>
+                  </div>
+
+                  {autoMonitor && (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={autoExecute}
+                        onCheckedChange={setAutoExecute}
+                      />
+                      <span className="text-sm text-muted-foreground">Auto-Execute</span>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => checkExitConditions(autoExecute)}
+                    disabled={checkingExits || openPositions.length === 0}
+                  >
+                    {checkingExits ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                    ) : (
+                      <Play className="w-4 h-4 mr-1" />
+                    )}
+                    Check Now
+                  </Button>
+                </div>
+              </div>
+
+              {/* Recent Exit Alerts */}
+              {recentExits.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-sm font-medium text-foreground mb-2">Recent Exit Triggers:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentExits.map((exit, idx) => (
+                      <Badge
+                        key={idx}
+                        className={exit.action === 'take_profit' 
+                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                        }
+                      >
+                        {exit.symbol}: {exit.action === 'take_profit' ? 'TP' : 'SL'} @ {exit.profitLossPercent.toFixed(2)}%
+                        {exit.executed && ' ✓'}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Open Positions */}
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-foreground mb-4">Open Positions</h2>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : openPositions.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Target className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground">No open positions</p>
+                  <p className="text-sm text-muted-foreground">Snipe tokens from the Scanner to track them here</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {openPositions.map(position => (
+                  <PositionCard 
+                    key={position.id} 
+                    position={position} 
+                    onClose={() => handleClosePosition(position)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Closed Positions */}
+          {closedPositions.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-4">Trade History</h2>
+              <div className="space-y-3">
+                {closedPositions.slice(0, 10).map(position => (
+                  <PositionCard 
+                    key={position.id} 
+                    position={position} 
+                    onClose={() => {}}
+                  />
                 ))}
               </div>
             </div>
-
-            {/* Recent Trades */}
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Recent Trades</h2>
-              <div className="glass rounded-xl p-4">
-                <div className="space-y-3">
-                  {recentTrades.map((trade, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            trade.type === "buy"
-                              ? "bg-success/10 text-success"
-                              : "bg-destructive/10 text-destructive"
-                          }`}
-                        >
-                          {trade.type.toUpperCase()}
-                        </span>
-                        <div>
-                          <p className="font-medium text-foreground font-mono">
-                            ${trade.token}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{trade.amount}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono text-sm text-foreground">{trade.value}</p>
-                        <p className="text-xs text-muted-foreground">{trade.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="ghost" className="w-full mt-4 text-primary">
-                  View All Trades
-                </Button>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </main>
     </div>
