@@ -31,14 +31,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
-
-interface ApiConfig {
-  name: string;
-  key: string;
-  endpoint: string;
-  status: "connected" | "disconnected" | "error";
-  description: string;
-}
+import { ApiSettingsModule } from "@/components/admin/ApiSettingsModule";
 
 interface UserProfile {
   user_id: string;
@@ -49,19 +42,9 @@ interface UserProfile {
 
 const Admin = () => {
   const { isAdmin, user } = useAuth();
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState("api");
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-
-  // API Settings State
-  const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([
-    { name: "DexScreener API", key: "", endpoint: "https://api.dexscreener.com/latest", status: "disconnected", description: "Token data and price feeds" },
-    { name: "Jupiter Aggregator", key: "", endpoint: "https://quote-api.jup.ag/v6", status: "disconnected", description: "Swap routing and execution" },
-    { name: "Birdeye API", key: "", endpoint: "https://public-api.birdeye.so", status: "disconnected", description: "Token analytics and holder data" },
-    { name: "Helius RPC", key: "", endpoint: "", status: "disconnected", description: "Solana RPC for transaction submission" },
-    { name: "Raydium SDK", key: "", endpoint: "https://api.raydium.io", status: "disconnected", description: "DEX liquidity and pool data" },
-  ]);
 
   // Market Scanner Settings
   const [scannerSettings, setScannerSettings] = useState({
@@ -191,9 +174,6 @@ const Admin = () => {
     }
   };
 
-  const toggleShowKey = (name: string) => {
-    setShowKeys((prev) => ({ ...prev, [name]: !prev[name] }));
-  };
 
   const tabs = [
     { id: "api", label: "API Settings", icon: Key },
@@ -269,70 +249,8 @@ const Admin = () => {
             <div className="lg:col-span-4">
               {/* API Settings Tab */}
               {activeTab === "api" && (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="glass rounded-xl p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 className="text-lg font-semibold text-foreground">External API Configuration</h2>
-                        <p className="text-sm text-muted-foreground">Configure API endpoints for data feeds and trade execution</p>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Test All
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {apiConfigs.map((api, index) => (
-                        <div key={index} className="p-4 bg-secondary/30 rounded-lg border border-border">
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-foreground">{api.name}</h3>
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${statusStyles[api.status]}`}>
-                                  {api.status}
-                                </span>
-                              </div>
-                              <p className="text-sm text-muted-foreground">{api.description}</p>
-                            </div>
-                            {api.status === "connected" ? (
-                              <CheckCircle className="w-5 h-5 text-success" />
-                            ) : (
-                              <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div className="grid md:grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-xs text-muted-foreground mb-1 block">API Endpoint</label>
-                              <input
-                                type="text"
-                                value={api.endpoint}
-                                placeholder="https://api.example.com"
-                                className="w-full h-10 px-3 bg-background border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-muted-foreground mb-1 block">API Key</label>
-                              <div className="relative">
-                                <input
-                                  type={showKeys[api.name] ? "text" : "password"}
-                                  value={api.key}
-                                  placeholder="Enter your API key"
-                                  className="w-full h-10 px-3 pr-10 bg-background border border-border rounded-lg text-foreground text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                />
-                                <button onClick={() => toggleShowKey(api.name)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                                  {showKeys[api.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button variant="glow"><Save className="w-4 h-4" />Save API Settings</Button>
-                  </div>
+                <div className="animate-fade-in">
+                  <ApiSettingsModule />
                 </div>
               )}
 
