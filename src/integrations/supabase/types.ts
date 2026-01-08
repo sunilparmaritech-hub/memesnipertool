@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_configurations: {
+        Row: {
+          api_key_encrypted: string | null
+          api_name: string
+          api_type: Database["public"]["Enums"]["api_type"]
+          base_url: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_enabled: boolean
+          last_checked_at: string | null
+          rate_limit_per_minute: number
+          status: Database["public"]["Enums"]["api_status"]
+          updated_at: string
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          api_name: string
+          api_type: Database["public"]["Enums"]["api_type"]
+          base_url: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_enabled?: boolean
+          last_checked_at?: string | null
+          rate_limit_per_minute?: number
+          status?: Database["public"]["Enums"]["api_status"]
+          updated_at?: string
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          api_name?: string
+          api_type?: Database["public"]["Enums"]["api_type"]
+          base_url?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_enabled?: boolean
+          last_checked_at?: string | null
+          rate_limit_per_minute?: number
+          status?: Database["public"]["Enums"]["api_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -83,6 +128,16 @@ export type Database = {
       }
     }
     Enums: {
+      api_status: "active" | "inactive" | "error" | "rate_limited"
+      api_type:
+        | "dexscreener"
+        | "geckoterminal"
+        | "birdeye"
+        | "dextools"
+        | "honeypot_rugcheck"
+        | "liquidity_lock"
+        | "trade_execution"
+        | "rpc_provider"
       app_role: "admin" | "user"
     }
     CompositeTypes: {
@@ -211,6 +266,17 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      api_status: ["active", "inactive", "error", "rate_limited"],
+      api_type: [
+        "dexscreener",
+        "geckoterminal",
+        "birdeye",
+        "dextools",
+        "honeypot_rugcheck",
+        "liquidity_lock",
+        "trade_execution",
+        "rpc_provider",
+      ],
       app_role: ["admin", "user"],
     },
   },
