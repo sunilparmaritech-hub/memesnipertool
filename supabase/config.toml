@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.auto-sniper]
 verify_jwt = false
+
+[functions.auto-exit]
+verify_jwt = false

@@ -59,6 +59,81 @@ export type Database = {
         }
         Relationships: []
       }
+      positions: {
+        Row: {
+          amount: number
+          chain: string
+          closed_at: string | null
+          created_at: string
+          current_price: number
+          current_value: number
+          entry_price: number
+          entry_value: number
+          exit_price: number | null
+          exit_reason: string | null
+          exit_tx_id: string | null
+          id: string
+          profit_loss_percent: number | null
+          profit_loss_value: number | null
+          profit_take_percent: number
+          status: Database["public"]["Enums"]["position_status"]
+          stop_loss_percent: number
+          token_address: string
+          token_name: string
+          token_symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          chain?: string
+          closed_at?: string | null
+          created_at?: string
+          current_price: number
+          current_value: number
+          entry_price: number
+          entry_value: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          exit_tx_id?: string | null
+          id?: string
+          profit_loss_percent?: number | null
+          profit_loss_value?: number | null
+          profit_take_percent: number
+          status?: Database["public"]["Enums"]["position_status"]
+          stop_loss_percent: number
+          token_address: string
+          token_name: string
+          token_symbol: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          chain?: string
+          closed_at?: string | null
+          created_at?: string
+          current_price?: number
+          current_value?: number
+          entry_price?: number
+          entry_value?: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          exit_tx_id?: string | null
+          id?: string
+          profit_loss_percent?: number | null
+          profit_loss_value?: number | null
+          profit_take_percent?: number
+          status?: Database["public"]["Enums"]["position_status"]
+          stop_loss_percent?: number
+          token_address?: string
+          token_name?: string
+          token_symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -187,6 +262,7 @@ export type Database = {
         | "trade_execution"
         | "rpc_provider"
       app_role: "admin" | "user"
+      position_status: "open" | "closed" | "pending"
       sniping_priority: "normal" | "fast" | "turbo"
     }
     CompositeTypes: {
@@ -327,6 +403,7 @@ export const Constants = {
         "rpc_provider",
       ],
       app_role: ["admin", "user"],
+      position_status: ["open", "closed", "pending"],
       sniping_priority: ["normal", "fast", "turbo"],
     },
   },
