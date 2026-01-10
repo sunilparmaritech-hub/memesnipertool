@@ -15,6 +15,7 @@ import MemeSniperSettings from "./pages/MemeSniperSettings";
 import RiskCompliance from "./pages/RiskCompliance";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import Notifications from "./pages/Notifications";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <RiskCompliance />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <Notifications />
                 </ProtectedRoute>
               }
             />
