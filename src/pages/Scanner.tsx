@@ -471,9 +471,23 @@ const Scanner = () => {
               {/* Liquidity Monitor */}
               <LiquidityMonitor 
                 pools={tokens}
-                activeTrades={openPositions.length}
+                activeTrades={openPositions}
                 loading={loading}
                 apiStatus={loading ? 'active' : 'waiting'}
+                onExitTrade={(positionId, currentPrice) => {
+                  if (isDemo) {
+                    closeDemoPosition(positionId, currentPrice, 'manual');
+                    const position = openDemoPositions.find(p => p.id === positionId);
+                    if (position) {
+                      const pnlValue = (currentPrice - position.entry_price) * position.amount;
+                      addBalance(settings?.trade_amount || 0 + (pnlValue / 150));
+                      toast({
+                        title: 'Position Closed',
+                        description: `${position.token_symbol} manually closed`,
+                      });
+                    }
+                  }
+                }}
               />
             </div>
 
