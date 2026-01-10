@@ -14,6 +14,7 @@ import { usePositions } from "@/hooks/usePositions";
 import { useWallet } from "@/hooks/useWallet";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { useDemoPortfolio } from "@/contexts/DemoPortfolioContext";
+import { useTokenScanner } from "@/hooks/useTokenScanner";
 import { PortfolioChart } from "@/components/charts/PriceCharts";
 import { TrendingUp, ArrowUpRight, FlaskConical, Coins, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,7 @@ const Index = () => {
   const { wallet } = useWallet();
   const { isDemo } = useAppMode();
   const { toast } = useToast();
+  const { tokens, loading: tokensLoading } = useTokenScanner();
   
   // Demo portfolio context
   const {
@@ -205,7 +207,7 @@ const Index = () => {
                 positions={openPositions} 
                 loading={positionsLoading}
               />
-              <MarketOverview />
+              <MarketOverview tokens={tokens} loading={tokensLoading} />
             </div>
           </div>
 

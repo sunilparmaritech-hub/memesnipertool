@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface Notification {
@@ -12,83 +11,48 @@ export interface Notification {
   metadata?: Record<string, any>;
 }
 
-// In-memory notifications store (will be replaced with DB later)
-const notificationsStore: Notification[] = [];
+const NOTIFICATIONS_STORAGE_KEY = 'meme_sniper_notifications';
+const MAX_NOTIFICATIONS = 50;
+
+// Load notifications from localStorage
+const loadFromStorage = (): Notification[] => {
+  try {
+    const stored = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Failed to load notifications from storage:', error);
+  }
+  return [];
+};
+
+// Save notifications to localStorage
+const saveToStorage = (notifications: Notification[]) => {
+  try {
+    // Keep only the most recent notifications
+    const trimmed = notifications.slice(0, MAX_NOTIFICATIONS);
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch (error) {
+    console.error('Failed to save notifications to storage:', error);
+  }
+};
 
 export function useNotifications() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(() => loadFromStorage());
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Generate mock notifications for demo
-  const generateMockNotifications = useCallback((): Notification[] => {
-    return [
-      {
-        id: '1',
-        title: 'New Token Detected',
-        message: 'PUMP token passed all risk checks with 85% score',
-        type: 'success',
-        read: false,
-        created_at: new Date(Date.now() - 5 * 60000).toISOString(),
-        metadata: { tokenAddress: 'pump123...', riskScore: 85 }
-      },
-      {
-        id: '2',
-        title: 'Trade Executed',
-        message: 'Bought 0.5 SOL worth of MEME token',
-        type: 'trade',
-        read: false,
-        created_at: new Date(Date.now() - 15 * 60000).toISOString(),
-        metadata: { amount: 0.5, token: 'MEME' }
-      },
-      {
-        id: '3',
-        title: 'Price Alert',
-        message: 'BONK increased 25% in the last hour',
-        type: 'info',
-        read: true,
-        created_at: new Date(Date.now() - 60 * 60000).toISOString(),
-      },
-      {
-        id: '4',
-        title: 'Liquidity Warning',
-        message: 'Low liquidity detected on SCAM token',
-        type: 'warning',
-        read: true,
-        created_at: new Date(Date.now() - 2 * 60 * 60000).toISOString(),
-      },
-      {
-        id: '5',
-        title: 'Bot Activated',
-        message: 'Liquidity bot is now running with your settings',
-        type: 'success',
-        read: true,
-        created_at: new Date(Date.now() - 24 * 60 * 60000).toISOString(),
-      },
-    ];
-  }, []);
-
-  // Load notifications
-  const loadNotifications = useCallback(async () => {
-    setLoading(true);
-    try {
-      // For now, use mock data - can be replaced with DB later
-      const mockNotifications = generateMockNotifications();
-      setNotifications(mockNotifications);
-      setUnreadCount(mockNotifications.filter(n => !n.read).length);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [generateMockNotifications]);
-
+  // Calculate unread count
   useEffect(() => {
-    if (user) {
-      loadNotifications();
-    }
-  }, [user, loadNotifications]);
+    setUnreadCount(notifications.filter(n => !n.read).length);
+  }, [notifications]);
+
+  // Persist to localStorage whenever notifications change
+  useEffect(() => {
+    saveToStorage(notifications);
+  }, [notifications]);
 
   // Mark notification as read
   const markAsRead = useCallback((notificationId: string) => {
@@ -97,13 +61,11 @@ export function useNotifications() {
         n.id === notificationId ? { ...n, read: true } : n
       )
     );
-    setUnreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
   // Mark all as read
   const markAllAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
   }, []);
 
   // Add a new notification
@@ -114,26 +76,25 @@ export function useNotifications() {
       created_at: new Date().toISOString(),
       read: false,
     };
-    setNotifications(prev => [newNotification, ...prev]);
-    setUnreadCount(prev => prev + 1);
+    setNotifications(prev => [newNotification, ...prev].slice(0, MAX_NOTIFICATIONS));
     return newNotification;
   }, []);
 
   // Delete a notification
   const deleteNotification = useCallback((notificationId: string) => {
-    setNotifications(prev => {
-      const notification = prev.find(n => n.id === notificationId);
-      if (notification && !notification.read) {
-        setUnreadCount(count => Math.max(0, count - 1));
-      }
-      return prev.filter(n => n.id !== notificationId);
-    });
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
   }, []);
 
   // Clear all notifications
   const clearAll = useCallback(() => {
     setNotifications([]);
-    setUnreadCount(0);
+  }, []);
+
+  // Refresh (reload from storage)
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setNotifications(loadFromStorage());
+    setLoading(false);
   }, []);
 
   return {
@@ -145,6 +106,6 @@ export function useNotifications() {
     addNotification,
     deleteNotification,
     clearAll,
-    refresh: loadNotifications,
+    refresh,
   };
 }

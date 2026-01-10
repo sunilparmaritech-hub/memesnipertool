@@ -1,79 +1,32 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, TrendingUp, TrendingDown, Bot, AlertTriangle, CheckCircle } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Bot, AlertTriangle, CheckCircle, Bell } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-
-interface ActivityItem {
-  id: string;
-  type: 'trade' | 'alert' | 'bot' | 'scan';
-  title: string;
-  description: string;
-  timestamp: Date;
-  status?: 'success' | 'warning' | 'info';
-  amount?: string;
-  change?: number;
-}
-
-const recentActivities: ActivityItem[] = [
-  {
-    id: '1',
-    type: 'trade',
-    title: 'Bought BONK',
-    description: '0.5 SOL → 1.2M BONK',
-    timestamp: new Date(Date.now() - 10 * 60000),
-    status: 'success',
-    change: 12.5,
-  },
-  {
-    id: '2',
-    type: 'alert',
-    title: 'High Volume Alert',
-    description: 'WIF volume spike detected',
-    timestamp: new Date(Date.now() - 35 * 60000),
-    status: 'warning',
-  },
-  {
-    id: '3',
-    type: 'bot',
-    title: 'Bot Activated',
-    description: 'Liquidity bot started scanning',
-    timestamp: new Date(Date.now() - 2 * 60 * 60000),
-    status: 'info',
-  },
-  {
-    id: '4',
-    type: 'trade',
-    title: 'Sold MYRO',
-    description: '500K MYRO → 0.8 SOL',
-    timestamp: new Date(Date.now() - 3 * 60 * 60000),
-    status: 'success',
-    change: -5.2,
-  },
-  {
-    id: '5',
-    type: 'scan',
-    title: 'New Token Found',
-    description: 'PUMP passed risk checks',
-    timestamp: new Date(Date.now() - 5 * 60 * 60000),
-    status: 'success',
-  },
-];
+import { useNotifications, Notification } from "@/hooks/useNotifications";
 
 const activityIcons = {
   trade: TrendingUp,
-  alert: AlertTriangle,
-  bot: Bot,
-  scan: CheckCircle,
+  warning: AlertTriangle,
+  error: AlertTriangle,
+  success: CheckCircle,
+  info: Bell,
 };
 
 const activityColors = {
   success: "bg-success/20 text-success border-success/30",
   warning: "bg-warning/20 text-warning border-warning/30",
+  error: "bg-destructive/20 text-destructive border-destructive/30",
   info: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  trade: "bg-primary/20 text-primary border-primary/30",
 };
 
 export default function RecentActivity() {
+  const { notifications } = useNotifications();
+  
+  // Get the 5 most recent notifications
+  const recentNotifications = notifications.slice(0, 5);
+
   return (
     <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-card/90 to-card/60 backdrop-blur-xl">
       <div className="absolute inset-0 opacity-30">
@@ -93,48 +46,57 @@ export default function RecentActivity() {
       </CardHeader>
       
       <CardContent className="relative pt-0">
-        <div className="space-y-2">
-          {recentActivities.map((activity, index) => {
-            const Icon = activityIcons[activity.type];
-            const colorClass = activityColors[activity.status || 'info'];
-            
-            return (
-              <div
-                key={activity.id}
-                className="group flex items-start gap-3 p-3 bg-secondary/30 hover:bg-secondary/50 rounded-xl transition-all duration-200 animate-fade-in"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <div className={cn("p-2 rounded-lg border shrink-0", colorClass)}>
-                  <Icon className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-sm">{activity.title}</p>
-                      <p className="text-xs text-muted-foreground">{activity.description}</p>
-                    </div>
-                    {activity.change !== undefined && (
-                      <Badge 
-                        variant="outline" 
-                        className={cn(
-                          "shrink-0 text-[10px] px-1.5",
-                          activity.change >= 0 
-                            ? "bg-success/10 text-success border-success/30" 
-                            : "bg-destructive/10 text-destructive border-destructive/30"
-                        )}
-                      >
-                        {activity.change >= 0 ? "+" : ""}{activity.change}%
-                      </Badge>
-                    )}
+        {recentNotifications.length === 0 ? (
+          <div className="text-center py-8">
+            <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No recent activity</p>
+            <p className="text-xs text-muted-foreground/70">Actions will appear here as you trade</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recentNotifications.map((notification, index) => {
+              const Icon = activityIcons[notification.type] || Bell;
+              const colorClass = activityColors[notification.type] || activityColors.info;
+              const pnl = notification.metadata?.pnl as number | undefined;
+              
+              return (
+                <div
+                  key={notification.id}
+                  className="group flex items-start gap-3 p-3 bg-secondary/30 hover:bg-secondary/50 rounded-xl transition-all duration-200 animate-fade-in"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className={cn("p-2 rounded-lg border shrink-0", colorClass)}>
+                    <Icon className="w-4 h-4" />
                   </div>
-                  <p className="text-[10px] text-muted-foreground/70 mt-1">
-                    {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{notification.message}</p>
+                      </div>
+                      {pnl !== undefined && (
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "shrink-0 text-[10px] px-1.5",
+                            pnl >= 0 
+                              ? "bg-success/10 text-success border-success/30" 
+                              : "bg-destructive/10 text-destructive border-destructive/30"
+                          )}
+                        >
+                          {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/70 mt-1">
+                      {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
