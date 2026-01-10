@@ -38,6 +38,14 @@ interface TokenData {
   pairAddress: string;
 }
 
+interface ApiError {
+  apiName: string;
+  apiType: string;
+  errorMessage: string;
+  endpoint: string;
+  timestamp: string;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -72,6 +80,30 @@ serve(async (req) => {
 
     const tokens: TokenData[] = [];
     const errors: string[] = [];
+    const apiErrors: ApiError[] = [];
+
+    // Helper function to log API health
+    const logApiHealth = async (
+      apiType: string,
+      endpoint: string,
+      responseTimeMs: number,
+      statusCode: number,
+      isSuccess: boolean,
+      errorMessage?: string
+    ) => {
+      try {
+        await supabase.from('api_health_metrics').insert({
+          api_type: apiType,
+          endpoint,
+          response_time_ms: responseTimeMs,
+          status_code: statusCode,
+          is_success: isSuccess,
+          error_message: errorMessage || null,
+        });
+      } catch (e) {
+        console.error('Failed to log API health:', e);
+      }
+    };
 
     // Helper to find API config by type
     const getApiConfig = (type: string): ApiConfig | undefined => 
@@ -80,11 +112,15 @@ serve(async (req) => {
     // Fetch from DexScreener
     const dexScreenerConfig = getApiConfig('dexscreener');
     if (dexScreenerConfig) {
+      const endpoint = `${dexScreenerConfig.base_url}/latest/dex/tokens/trending`;
+      const startTime = Date.now();
       try {
         console.log('Fetching from DexScreener...');
-        const response = await fetch(`${dexScreenerConfig.base_url}/latest/dex/tokens/trending`);
+        const response = await fetch(endpoint);
+        const responseTime = Date.now() - startTime;
         
         if (response.ok) {
+          await logApiHealth('dexscreener', endpoint, responseTime, response.status, true);
           const data = await response.json();
           const pairs = data.pairs || data || [];
           
@@ -115,22 +151,47 @@ serve(async (req) => {
               });
             }
           }
+        } else {
+          const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+          await logApiHealth('dexscreener', endpoint, responseTime, response.status, false, errorMsg);
+          errors.push(`DexScreener: ${errorMsg}`);
+          apiErrors.push({
+            apiName: dexScreenerConfig.api_name,
+            apiType: 'dexscreener',
+            errorMessage: errorMsg,
+            endpoint,
+            timestamp: new Date().toISOString(),
+          });
         }
-      } catch (e) {
+      } catch (e: any) {
+        const responseTime = Date.now() - startTime;
+        const errorMsg = e.message || 'Network error';
+        await logApiHealth('dexscreener', endpoint, responseTime, 0, false, errorMsg);
         console.error('DexScreener error:', e);
-        errors.push('DexScreener: Failed to fetch data');
+        errors.push(`DexScreener: ${errorMsg}`);
+        apiErrors.push({
+          apiName: dexScreenerConfig.api_name,
+          apiType: 'dexscreener',
+          errorMessage: errorMsg,
+          endpoint,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
 
     // Fetch from GeckoTerminal
     const geckoConfig = getApiConfig('geckoterminal');
     if (geckoConfig) {
+      const chainParam = chains.includes('solana') ? 'solana' : 'eth';
+      const endpoint = `${geckoConfig.base_url}/api/v2/networks/${chainParam}/new_pools`;
+      const startTime = Date.now();
       try {
         console.log('Fetching from GeckoTerminal...');
-        const chainParam = chains.includes('solana') ? 'solana' : 'eth';
-        const response = await fetch(`${geckoConfig.base_url}/api/v2/networks/${chainParam}/new_pools`);
+        const response = await fetch(endpoint);
+        const responseTime = Date.now() - startTime;
         
         if (response.ok) {
+          await logApiHealth('geckoterminal', endpoint, responseTime, response.status, true);
           const data = await response.json();
           const pools = data.data || [];
           
@@ -162,25 +223,50 @@ serve(async (req) => {
               });
             }
           }
+        } else {
+          const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+          await logApiHealth('geckoterminal', endpoint, responseTime, response.status, false, errorMsg);
+          errors.push(`GeckoTerminal: ${errorMsg}`);
+          apiErrors.push({
+            apiName: geckoConfig.api_name,
+            apiType: 'geckoterminal',
+            errorMessage: errorMsg,
+            endpoint,
+            timestamp: new Date().toISOString(),
+          });
         }
-      } catch (e) {
+      } catch (e: any) {
+        const responseTime = Date.now() - startTime;
+        const errorMsg = e.message || 'Network error';
+        await logApiHealth('geckoterminal', endpoint, responseTime, 0, false, errorMsg);
         console.error('GeckoTerminal error:', e);
-        errors.push('GeckoTerminal: Failed to fetch data');
+        errors.push(`GeckoTerminal: ${errorMsg}`);
+        apiErrors.push({
+          apiName: geckoConfig.api_name,
+          apiType: 'geckoterminal',
+          errorMessage: errorMsg,
+          endpoint,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
 
     // Fetch from Birdeye (if configured with API key)
     const birdeyeConfig = getApiConfig('birdeye');
     if (birdeyeConfig && birdeyeConfig.api_key_encrypted) {
+      const endpoint = `${birdeyeConfig.base_url}/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&limit=20`;
+      const startTime = Date.now();
       try {
         console.log('Fetching from Birdeye...');
-        const response = await fetch(`${birdeyeConfig.base_url}/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&limit=20`, {
+        const response = await fetch(endpoint, {
           headers: {
             'X-API-KEY': birdeyeConfig.api_key_encrypted,
           },
         });
+        const responseTime = Date.now() - startTime;
         
         if (response.ok) {
+          await logApiHealth('birdeye', endpoint, responseTime, response.status, true);
           const data = await response.json();
           const tokenList = data.data?.tokens || [];
           
@@ -211,28 +297,50 @@ serve(async (req) => {
               });
             }
           }
+        } else {
+          const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+          await logApiHealth('birdeye', endpoint, responseTime, response.status, false, errorMsg);
+          errors.push(`Birdeye: ${errorMsg}`);
+          apiErrors.push({
+            apiName: birdeyeConfig.api_name,
+            apiType: 'birdeye',
+            errorMessage: errorMsg,
+            endpoint,
+            timestamp: new Date().toISOString(),
+          });
         }
-      } catch (e) {
+      } catch (e: any) {
+        const responseTime = Date.now() - startTime;
+        const errorMsg = e.message || 'Network error';
+        await logApiHealth('birdeye', endpoint, responseTime, 0, false, errorMsg);
         console.error('Birdeye error:', e);
-        errors.push('Birdeye: Failed to fetch data');
+        errors.push(`Birdeye: ${errorMsg}`);
+        apiErrors.push({
+          apiName: birdeyeConfig.api_name,
+          apiType: 'birdeye',
+          errorMessage: errorMsg,
+          endpoint,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
 
     // Fetch from Jupiter (alternative to Dextools for Solana)
     // Jupiter is a free, reliable API for Solana token data
     if (chains.includes('solana')) {
+      const endpoint = 'https://token.jup.ag/strict';
+      const startTime = Date.now();
       try {
         console.log('Fetching from Jupiter API...');
-        // Fetch trending/new tokens from Jupiter
-        const jupiterResponse = await fetch('https://token.jup.ag/strict');
+        const jupiterResponse = await fetch(endpoint);
+        const responseTime = Date.now() - startTime;
         
         if (jupiterResponse.ok) {
+          await logApiHealth('jupiter', endpoint, responseTime, jupiterResponse.status, true);
           const jupiterTokens = await jupiterResponse.json();
-          // Get the most recent tokens (last 50 entries)
           const recentTokens = jupiterTokens.slice(-50);
           
           for (const token of recentTokens.slice(0, 15)) {
-            // Skip if already exists
             if (tokens.find(t => t.address === token.address)) continue;
             
             tokens.push({
@@ -241,10 +349,10 @@ serve(async (req) => {
               name: token.name || 'Unknown',
               symbol: token.symbol || '???',
               chain: 'solana',
-              liquidity: Math.floor(Math.random() * 50000) + minLiquidity, // Jupiter doesn't provide liquidity directly
+              liquidity: Math.floor(Math.random() * 50000) + minLiquidity,
               liquidityLocked: false,
               lockPercentage: null,
-              priceUsd: 0, // Would need price API call
+              priceUsd: 0,
               priceChange24h: 0,
               volume24h: 0,
               marketCap: 0,
@@ -252,15 +360,36 @@ serve(async (req) => {
               createdAt: new Date().toISOString(),
               earlyBuyers: Math.floor(Math.random() * 5) + 1,
               buyerPosition: Math.floor(Math.random() * 3) + 1,
-              riskScore: Math.floor(Math.random() * 25) + 25, // Lower risk for verified tokens
+              riskScore: Math.floor(Math.random() * 25) + 25,
               source: 'Jupiter',
               pairAddress: token.address,
             });
           }
+        } else {
+          const errorMsg = `HTTP ${jupiterResponse.status}: ${jupiterResponse.statusText}`;
+          await logApiHealth('jupiter', endpoint, responseTime, jupiterResponse.status, false, errorMsg);
+          errors.push(`Jupiter: ${errorMsg}`);
+          apiErrors.push({
+            apiName: 'Jupiter',
+            apiType: 'jupiter',
+            errorMessage: errorMsg,
+            endpoint,
+            timestamp: new Date().toISOString(),
+          });
         }
-      } catch (e) {
+      } catch (e: any) {
+        const responseTime = Date.now() - startTime;
+        const errorMsg = e.message || 'Network error';
+        await logApiHealth('jupiter', endpoint, responseTime, 0, false, errorMsg);
         console.error('Jupiter API error:', e);
-        errors.push('Jupiter: Failed to fetch data');
+        errors.push(`Jupiter: ${errorMsg}`);
+        apiErrors.push({
+          apiName: 'Jupiter',
+          apiType: 'jupiter',
+          errorMessage: errorMsg,
+          endpoint,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
 
@@ -304,6 +433,7 @@ serve(async (req) => {
       JSON.stringify({
         tokens: uniqueTokens,
         errors,
+        apiErrors,
         timestamp: new Date().toISOString(),
         apiCount: apiConfigs?.filter((c: ApiConfig) => c.is_enabled).length || 0,
       }),

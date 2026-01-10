@@ -24,9 +24,18 @@ export interface ScannedToken {
   pairAddress: string;
 }
 
+export interface ApiError {
+  apiName: string;
+  apiType: string;
+  errorMessage: string;
+  endpoint: string;
+  timestamp: string;
+}
+
 interface ScanResult {
   tokens: ScannedToken[];
   errors: string[];
+  apiErrors: ApiError[];
   timestamp: string;
   apiCount: number;
 }
@@ -37,11 +46,13 @@ export function useTokenScanner() {
   const [lastScan, setLastScan] = useState<string | null>(null);
   const [apiCount, setApiCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
+  const [apiErrors, setApiErrors] = useState<ApiError[]>([]);
   const { toast } = useToast();
 
   const scanTokens = useCallback(async (minLiquidity: number = 300, chains: string[] = ['solana']) => {
     setLoading(true);
     setErrors([]);
+    setApiErrors([]);
 
     try {
       const { data, error } = await supabase.functions.invoke('token-scanner', {
@@ -54,12 +65,14 @@ export function useTokenScanner() {
       setTokens(result.tokens || []);
       setLastScan(result.timestamp);
       setApiCount(result.apiCount);
+      setApiErrors(result.apiErrors || []);
       
       if (result.errors && result.errors.length > 0) {
         setErrors(result.errors);
+        const failedApis = result.apiErrors?.map(e => e.apiName).join(', ') || 'Unknown APIs';
         toast({
           title: 'Scan completed with warnings',
-          description: `${result.errors.length} API(s) had issues`,
+          description: `${result.errors.length} API(s) had issues: ${failedApis}`,
           variant: 'destructive',
         });
       } else {
@@ -103,6 +116,7 @@ export function useTokenScanner() {
     lastScan,
     apiCount,
     errors,
+    apiErrors,
     scanTokens,
     getTopOpportunities,
     filterByChain,

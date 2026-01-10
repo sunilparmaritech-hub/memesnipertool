@@ -13,7 +13,9 @@ import { useAutoSniper } from "@/hooks/useAutoSniper";
 import { useWallet } from "@/hooks/useWallet";
 import { usePositions } from "@/hooks/usePositions";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet, TrendingUp, Zap, Activity } from "lucide-react";
+import { Wallet, TrendingUp, Zap, Activity, AlertTriangle, X } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 const generatePortfolioData = () => {
   const data = [];
@@ -33,7 +35,7 @@ const generatePortfolioData = () => {
 };
 
 const Scanner = () => {
-  const { tokens, loading, scanTokens } = useTokenScanner();
+  const { tokens, loading, scanTokens, errors, apiErrors } = useTokenScanner();
   const { settings, saving, saveSettings, updateField } = useSniperSettings();
   const { evaluateTokens } = useAutoSniper();
   const { wallet, connectPhantom, disconnect, refreshBalance } = useWallet();
@@ -44,6 +46,7 @@ const Scanner = () => {
   const [portfolioData] = useState(generatePortfolioData);
   const [scanSpeed, setScanSpeed] = useState<'slow' | 'normal' | 'fast'>('normal');
   const [isPaused, setIsPaused] = useState(false);
+  const [showApiErrors, setShowApiErrors] = useState(true);
 
   // Calculate stats
   const totalValue = useMemo(() => 
@@ -154,6 +157,40 @@ const Scanner = () => {
 
       <main className="pt-20 pb-6 px-4">
         <div className="container mx-auto space-y-6">
+          {/* API Errors Alert */}
+          {apiErrors.length > 0 && showApiErrors && (
+            <Alert variant="destructive" className="relative">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle className="flex items-center justify-between">
+                <span>API Issues Detected ({apiErrors.length})</span>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 absolute top-2 right-2"
+                  onClick={() => setShowApiErrors(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </AlertTitle>
+              <AlertDescription>
+                <div className="mt-2 space-y-1">
+                  {apiErrors.map((error, index) => (
+                    <div key={index} className="flex items-center justify-between text-sm bg-destructive/10 rounded px-2 py-1">
+                      <div>
+                        <span className="font-medium">{error.apiName}</span>
+                        <span className="text-muted-foreground ml-2">({error.apiType})</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{error.errorMessage}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  View Admin Panel → Analytics for detailed API health monitoring
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Stats Row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatsCard
