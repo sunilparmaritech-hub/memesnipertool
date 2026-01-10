@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Bell, 
   Wallet, 
   User, 
   LogOut,
@@ -11,12 +10,12 @@ import {
   X,
   Zap,
   LayoutDashboard,
-  Bot,
   Briefcase,
   Shield,
   Settings,
   Crown,
   BarChart3,
+  Bell,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +26,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import WalletConnectionModal from "@/components/wallet/WalletConnectionModal";
 
 interface TradingHeaderProps {
   walletConnected?: boolean;
@@ -122,10 +123,9 @@ export default function TradingHeader({
           {/* Right Side Actions */}
           <div className="flex items-center gap-2">
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="text-muted-foreground relative hidden sm:flex hover:text-foreground">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-success rounded-full animate-pulse" />
-            </Button>
+            <Link to="/notifications" className="hidden sm:flex">
+              <NotificationBell />
+            </Link>
             
             {/* Network Badge */}
             <Badge variant="outline" className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-secondary/50">
@@ -134,15 +134,7 @@ export default function TradingHeader({
             </Badge>
             
             {/* Connect Wallet Button */}
-            <Button 
-              variant={walletConnected ? "outline" : "glow"}
-              onClick={onConnectWallet}
-              size="sm"
-              className={`min-w-[130px] ${walletConnected ? 'bg-secondary/50' : ''}`}
-            >
-              <Wallet className="w-4 h-4 mr-1.5" />
-              {walletConnected ? displayAddress : "Connect Wallet"}
-            </Button>
+            <WalletConnectionModal />
             
             {/* User Menu */}
             {user && (
