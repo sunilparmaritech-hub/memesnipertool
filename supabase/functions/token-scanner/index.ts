@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateTokenScannerInput } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,8 +65,18 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Parse request body
-    const { minLiquidity = 300, chains = ['solana'] } = await req.json().catch(() => ({}));
+    // Parse and validate request body
+    const rawBody = await req.json().catch(() => ({}));
+    const validationResult = validateTokenScannerInput(rawBody);
+    
+    if (!validationResult.success) {
+      return new Response(JSON.stringify({ error: validationResult.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { minLiquidity, chains } = validationResult.data!;
 
     // Fetch enabled API configurations
     const { data: apiConfigs, error: apiError } = await supabase

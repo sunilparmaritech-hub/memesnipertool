@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateAutoSniperInput, type TokenData as ValidatedTokenData } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -313,8 +314,18 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { tokens = [], executeOnApproval = false } = body;
+    // Parse and validate request body
+    const rawBody = await req.json().catch(() => ({}));
+    const validationResult = validateAutoSniperInput(rawBody);
+    
+    if (!validationResult.success) {
+      return new Response(JSON.stringify({ error: validationResult.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { tokens, executeOnApproval } = validationResult.data!;
 
     // Default settings to use if user hasn't configured any
     const defaultSettings: UserSettings = {

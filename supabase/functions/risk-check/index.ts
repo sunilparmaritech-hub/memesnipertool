@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateRiskCheckInput } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -263,8 +264,18 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { action, tokens } = body;
+    // Parse and validate request body
+    const rawBody = await req.json().catch(() => ({}));
+    const validationResult = validateRiskCheckInput(rawBody);
+    
+    if (!validationResult.success) {
+      return new Response(JSON.stringify({ error: validationResult.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { action, tokens, updates, active, limit } = validationResult.data!;
 
     // Fetch user's risk settings
     let { data: riskSettings, error: settingsError } = await supabase
@@ -293,10 +304,9 @@ serve(async (req) => {
     }
 
     if (action === 'update_settings') {
-      const { updates } = body;
       const { data: updatedSettings, error: updateError } = await supabase
         .from('risk_settings')
-        .update(updates)
+        .update(updates || {})
         .eq('user_id', user.id)
         .select()
         .single();
@@ -309,7 +319,6 @@ serve(async (req) => {
     }
 
     if (action === 'emergency_stop') {
-      const { active } = body;
       const { data: updatedSettings } = await supabase
         .from('risk_settings')
         .update({ emergency_stop_active: active })
@@ -426,13 +435,13 @@ serve(async (req) => {
     }
 
     if (action === 'get_logs') {
-      const { limit = 50 } = body;
+      const queryLimit = limit ?? 50;
       const { data: logs } = await supabase
         .from('risk_check_logs')
         .select('*')
         .eq('user_id', user.id)
         .order('checked_at', { ascending: false })
-        .limit(limit);
+        .limit(queryLimit);
 
       return new Response(JSON.stringify({ logs: logs || [] }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

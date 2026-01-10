@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateAdminAnalyticsInput } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,8 +99,19 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { action, timeRange = '24h' } = body;
+    // Parse and validate request body
+    const rawBody = await req.json().catch(() => ({}));
+    const validationResult = validateAdminAnalyticsInput(rawBody);
+    
+    if (!validationResult.success) {
+      return new Response(JSON.stringify({ error: validationResult.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const validatedInput = validationResult.data!;
+    const { action, timeRange } = validatedInput;
 
     // Calculate time range
     const now = new Date();
@@ -339,7 +351,7 @@ serve(async (req) => {
     }
 
     if (action === 'log_event') {
-      const { eventType, eventCategory, message, metadata, severity } = body;
+      const { eventType, eventCategory, message, metadata, severity } = validatedInput;
       
       await supabase.from('system_logs').insert({
         event_type: eventType,
@@ -356,7 +368,7 @@ serve(async (req) => {
     }
 
     if (action === 'log_api_health') {
-      const { apiType, endpoint, responseTimeMs, statusCode, isSuccess, errorMessage } = body;
+      const { apiType, endpoint, responseTimeMs, statusCode, isSuccess, errorMessage } = validatedInput;
       
       await supabase.from('api_health_metrics').insert({
         api_type: apiType,
