@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateAutoExitInput } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -213,8 +214,18 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { positionIds, executeExits = false } = body;
+    // Parse and validate request body
+    const rawBody = await req.json().catch(() => ({}));
+    const validationResult = validateAutoExitInput(rawBody);
+    
+    if (!validationResult.success) {
+      return new Response(JSON.stringify({ error: validationResult.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { positionIds, executeExits } = validationResult.data!;
 
     // Fetch API configurations
     const { data: apiConfigs } = await supabase
