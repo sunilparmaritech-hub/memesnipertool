@@ -471,38 +471,158 @@ const AdminAnalytics = () => {
                 </Card>
               </div>
 
-              {/* Recent Errors */}
+              {/* Error Distribution by API Type */}
+              <div className="grid lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                      Error Distribution by API
+                    </CardTitle>
+                    <CardDescription>Breakdown of errors per API type</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {Object.keys(analytics.apiErrors.byType).length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <CheckCircle className="w-10 h-10 mx-auto mb-2 text-green-500/50" />
+                        <p>No errors recorded</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {Object.entries(analytics.apiErrors.byType).map(([type, count]) => {
+                          const typeData = analytics.apiHealth.byType[type];
+                          const errorRate = typeData ? Math.round((count / typeData.total) * 100) : 0;
+                          return (
+                            <div key={type} className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <XCircle className="w-4 h-4 text-red-500" />
+                                  <span className="font-medium capitalize">{type}</span>
+                                </div>
+                                <Badge variant="destructive">{count} errors</Badge>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-red-500 transition-all"
+                                    style={{ width: `${Math.min(errorRate, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground w-12">{errorRate}% fail</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Recent Errors - Detailed View */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <XCircle className="w-5 h-5 text-red-500" />
+                      Recent API Errors
+                    </CardTitle>
+                    <CardDescription>Latest failed API calls with details</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analytics.apiErrors.recent.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <CheckCircle className="w-10 h-10 mx-auto mb-2 text-green-500/50" />
+                        <p>No recent errors</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                        {analytics.apiErrors.recent.map((error, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                            <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="outline" className="text-xs capitalize">{error.api_type}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatDistanceToNow(new Date(error.created_at), { addSuffix: true })}
+                                </span>
+                              </div>
+                              <p className="text-sm text-red-400 break-words">{error.error_message}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Scanner API Health Summary */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <XCircle className="w-5 h-5 text-red-500" />
-                    Recent API Errors
+                    <Database className="w-5 h-5" />
+                    Scanner API Health Summary
                   </CardTitle>
+                  <CardDescription>
+                    Real-time health status of token scanner APIs (DexScreener, GeckoTerminal, Birdeye, Jupiter)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {analytics.apiErrors.recent.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <CheckCircle className="w-10 h-10 mx-auto mb-2 text-green-500/50" />
-                      <p>No recent errors</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {analytics.apiErrors.recent.map((error, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
-                          <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge variant="outline" className="text-xs">{error.api_type}</Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(error.created_at), { addSuffix: true })}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {['dexscreener', 'geckoterminal', 'birdeye', 'jupiter'].map((apiType) => {
+                      const apiData = analytics.apiHealth.byType[apiType];
+                      const config = apiConfigs.find((c: ApiConfig) => c.api_type === apiType);
+                      const errorCount = analytics.apiErrors.byType[apiType] || 0;
+                      const successRate = apiData ? Math.round(((apiData.total - apiData.errors) / apiData.total) * 100) : 0;
+                      
+                      return (
+                        <div 
+                          key={apiType} 
+                          className={`p-4 rounded-lg border ${
+                            errorCount > 0 
+                              ? 'bg-red-500/5 border-red-500/20' 
+                              : apiData?.total > 0 
+                                ? 'bg-green-500/5 border-green-500/20'
+                                : 'bg-secondary/30 border-border/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            {errorCount > 0 ? (
+                              <XCircle className="w-5 h-5 text-red-500" />
+                            ) : apiData?.total > 0 ? (
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <Clock className="w-5 h-5 text-muted-foreground" />
+                            )}
+                            <span className="font-medium capitalize">{apiType}</span>
+                          </div>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Calls</span>
+                              <span>{apiData?.total || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Success</span>
+                              <span className={successRate >= 90 ? 'text-green-500' : successRate >= 50 ? 'text-yellow-500' : 'text-red-500'}>
+                                {successRate || 0}%
                               </span>
                             </div>
-                            <p className="text-sm text-red-400 truncate">{error.error_message}</p>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Latency</span>
+                              <span>{apiData?.avgLatency || 0}ms</span>
+                            </div>
+                            {config && (
+                              <Badge 
+                                variant="outline" 
+                                className={`mt-2 w-full justify-center ${getStatusColor(config.status)}`}
+                              >
+                                {config.status}
+                              </Badge>
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
