@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { useDemoPortfolio } from "@/contexts/DemoPortfolioContext";
+import { useSolPrice } from "@/hooks/useSolPrice";
 import { Wallet, TrendingUp, Zap, Activity, AlertTriangle, X, FlaskConical, Coins, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -30,11 +31,14 @@ const Scanner = forwardRef<HTMLDivElement, object>(function Scanner(_props, ref)
   const { settings, saving, saveSettings, updateField } = useSniperSettings();
   const { evaluateTokens, result: sniperResult, loading: sniperLoading } = useAutoSniper();
   const { startAutoExitMonitor, stopAutoExitMonitor, isMonitoring } = useAutoExit();
-  const { wallet, connectPhantom, disconnect, refreshBalance } = useWallet();
+  const { wallet, connectPhantom, disconnect } = useWallet();
   const { openPositions: realOpenPositions, closedPositions: realClosedPositions, fetchPositions } = usePositions();
   const { toast } = useToast();
   const { addNotification } = useNotifications();
   const { mode } = useAppMode();
+  
+  // Real-time SOL price
+  const { price: solPrice } = useSolPrice();
   
   // Demo portfolio context
   const {
@@ -203,8 +207,8 @@ const Scanner = forwardRef<HTMLDivElement, object>(function Scanner(_props, ref)
       );
       
       if (approvedToken && settings.trade_amount) {
-        // Check if we have enough balance
-        const tradeAmountInDollars = settings.trade_amount * 150; // Approximate SOL price
+        // Check if we have enough balance - use real SOL price
+        const tradeAmountInDollars = settings.trade_amount * solPrice;
         
         if (demoBalance >= settings.trade_amount) {
           // Deduct balance
@@ -265,14 +269,14 @@ const Scanner = forwardRef<HTMLDivElement, object>(function Scanner(_props, ref)
             // Check exit conditions
             if (pnlPercent >= settings.profit_take_percentage) {
               closeDemoPosition(newPosition.id, newPrice, 'take_profit');
-              addBalance(settings.trade_amount + (pnlValue / 150)); // Return original + profit
+              addBalance(settings.trade_amount + (pnlValue / solPrice)); // Return original + profit
               toast({
                 title: '💰 Take Profit Hit!',
                 description: `Closed ${approvedToken.symbol} at +${pnlPercent.toFixed(1)}%`,
               });
             } else if (pnlPercent <= -settings.stop_loss_percentage) {
               closeDemoPosition(newPosition.id, newPrice, 'stop_loss');
-              addBalance(settings.trade_amount + (pnlValue / 150)); // Return remaining value
+              addBalance(settings.trade_amount + (pnlValue / solPrice)); // Return remaining value
               toast({
                 title: '🛑 Stop Loss Hit',
                 description: `Closed ${approvedToken.symbol} at ${pnlPercent.toFixed(1)}%`,
