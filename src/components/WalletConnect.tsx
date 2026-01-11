@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useWallet, BlockchainNetwork } from '@/hooks/useWallet';
 import { Wallet, Copy, ExternalLink, RefreshCw, LogOut, Loader2, CheckCircle, Shield } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,6 +49,10 @@ export function WalletConnect() {
     connectMetaMask,
     connectWalletConnect,
     disconnect,
+    requestDisconnect,
+    cancelDisconnect,
+    showDisconnectConfirm,
+    pendingDisconnect,
     refreshBalance,
   } = useWallet();
   const [isOpen, setIsOpen] = useState(false);
@@ -151,7 +156,18 @@ export function WalletConnect() {
     const walletInfo = getWalletInfo();
     
     return (
-      <Card className="border-border bg-card">
+      <>
+        <ConfirmDialog
+          open={showDisconnectConfirm}
+          onOpenChange={cancelDisconnect}
+          title="Disconnect Wallet?"
+          description="Are you sure you want to disconnect your wallet? You'll need to reconnect to perform any transactions."
+          confirmLabel="Disconnect"
+          variant="warning"
+          onConfirm={disconnect}
+          loading={pendingDisconnect}
+        />
+        <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -231,13 +247,14 @@ export function WalletConnect() {
           <Button
             variant="outline"
             className="w-full"
-            onClick={disconnect}
+            onClick={requestDisconnect}
           >
             <LogOut className="h-4 w-4 mr-2" />
             Disconnect Wallet
           </Button>
         </CardContent>
       </Card>
+      </>
     );
   }
 

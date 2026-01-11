@@ -383,7 +383,23 @@ export function useWallet() {
     });
   }, [toast]);
 
+  // State for disconnect confirmation
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [pendingDisconnect, setPendingDisconnect] = useState(false);
+
+  // Initiate disconnect with confirmation
+  const requestDisconnect = useCallback(() => {
+    setShowDisconnectConfirm(true);
+  }, []);
+
+  // Cancel disconnect
+  const cancelDisconnect = useCallback(() => {
+    setShowDisconnectConfirm(false);
+  }, []);
+
+  // Perform actual disconnect
   const disconnect = useCallback(async () => {
+    setPendingDisconnect(true);
     try {
       if (wallet.walletType && wallet.network === 'solana') {
         const provider = getSolanaProvider(wallet.walletType);
@@ -401,6 +417,7 @@ export function useWallet() {
       });
 
       clearWalletConnection();
+      setShowDisconnectConfirm(false);
       toast({ title: 'Wallet disconnected' });
     } catch (error: any) {
       toast({
@@ -408,6 +425,8 @@ export function useWallet() {
         description: error.message,
         variant: 'destructive',
       });
+    } finally {
+      setPendingDisconnect(false);
     }
   }, [wallet.walletType, wallet.network, toast, getSolanaProvider, clearWalletConnection]);
 
@@ -734,6 +753,10 @@ export function useWallet() {
     connectMetaMask,
     connectWalletConnect,
     disconnect,
+    requestDisconnect,
+    cancelDisconnect,
+    showDisconnectConfirm,
+    pendingDisconnect,
     refreshBalance,
     signTransaction,
     signAndSendTransaction,

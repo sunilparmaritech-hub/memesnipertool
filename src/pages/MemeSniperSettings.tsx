@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useState, useEffect, useCallback } from 'react';
 import TradingHeader from "@/components/trading/TradingHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Slider } from "@/components/ui/slider";
 import { useSniperSettings, SnipingPriority } from "@/hooks/useSniperSettings";
 import { useWallet } from "@/hooks/useWallet";
+import { useDebouncedCallback } from "@/hooks/useDebounce";
+import { validateSettings, isValidSolanaAddress, validateField } from "@/lib/sniperValidation";
 import {
   Crosshair,
   Save,
@@ -21,6 +23,7 @@ import {
   Plus,
   X,
   Users,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,11 +45,54 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
   const { wallet, connectPhantom, disconnect } = useWallet();
   const [newBlacklistToken, setNewBlacklistToken] = useState('');
   const [newWhitelistToken, setNewWhitelistToken] = useState('');
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Debounced field update to prevent excessive API calls (300ms delay)
+  const debouncedUpdateField = useDebouncedCallback(
+    <K extends keyof typeof settings>(field: K, value: (typeof settings)[K]) => {
+      if (!settings) return;
+      
+      // Validate the field
+      const validation = validateField(field as any, value as any);
+      if (!validation.valid) {
+        setValidationErrors(prev => ({ ...prev, [field]: validation.error || 'Invalid' }));
+      } else {
+        setValidationErrors(prev => {
+          const next = { ...prev };
+          delete next[field];
+          return next;
+        });
+      }
+      
+      updateField(field, value);
+      setHasUnsavedChanges(true);
+    },
+    300
+  );
+
+  // Immediate update for non-debounced fields (like toggles)
+  const immediateUpdateField = useCallback(<K extends keyof typeof settings>(field: K, value: (typeof settings)[K]) => {
+    if (!settings) return;
+    updateField(field, value);
+    setHasUnsavedChanges(true);
+  }, [settings, updateField]);
 
   const handleSave = async () => {
     if (!settings) return;
+    
+    // Validate all fields before saving
+    const validation = validateSettings(settings);
+    if (!validation.valid) {
+      setValidationErrors(validation.errors);
+      toast.error('Please fix validation errors before saving');
+      return;
+    }
+    
     try {
       await saveSettings(settings);
+      setValidationErrors({});
+      setHasUnsavedChanges(false);
     } catch {
       // Error already handled in hook
     }
@@ -58,37 +104,64 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
     const updated = current.includes(categoryId)
       ? current.filter(c => c !== categoryId)
       : [...current, categoryId];
-    updateField('category_filters', updated);
+    
+    // Validate minimum categories
+    if (updated.length === 0) {
+      toast.error('Select at least one category');
+      return;
+    }
+    
+    immediateUpdateField('category_filters', updated);
   };
 
   const addToBlacklist = () => {
     if (!settings || !newBlacklistToken.trim()) return;
-    if (settings.token_blacklist.includes(newBlacklistToken.trim())) {
+    
+    const trimmed = newBlacklistToken.trim();
+    
+    // Validate address format
+    if (!isValidSolanaAddress(trimmed)) {
+      toast.error('Invalid Solana token address format');
+      return;
+    }
+    
+    if (settings.token_blacklist.includes(trimmed)) {
       toast.error('Token already in blacklist');
       return;
     }
-    updateField('token_blacklist', [...settings.token_blacklist, newBlacklistToken.trim()]);
+    
+    immediateUpdateField('token_blacklist', [...settings.token_blacklist, trimmed]);
     setNewBlacklistToken('');
   };
 
   const removeFromBlacklist = (token: string) => {
     if (!settings) return;
-    updateField('token_blacklist', settings.token_blacklist.filter(t => t !== token));
+    immediateUpdateField('token_blacklist', settings.token_blacklist.filter(t => t !== token));
   };
 
   const addToWhitelist = () => {
     if (!settings || !newWhitelistToken.trim()) return;
-    if (settings.token_whitelist.includes(newWhitelistToken.trim())) {
+    
+    const trimmed = newWhitelistToken.trim();
+    
+    // Validate address format
+    if (!isValidSolanaAddress(trimmed)) {
+      toast.error('Invalid Solana token address format');
+      return;
+    }
+    
+    if (settings.token_whitelist.includes(trimmed)) {
       toast.error('Token already in whitelist');
       return;
     }
-    updateField('token_whitelist', [...settings.token_whitelist, newWhitelistToken.trim()]);
+    
+    immediateUpdateField('token_whitelist', [...settings.token_whitelist, trimmed]);
     setNewWhitelistToken('');
   };
 
   const removeFromWhitelist = (token: string) => {
     if (!settings) return;
-    updateField('token_whitelist', settings.token_whitelist.filter(t => t !== token));
+    immediateUpdateField('token_whitelist', settings.token_whitelist.filter(t => t !== token));
   };
 
   const handleConnectWallet = async () => {
@@ -98,6 +171,19 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
       await connectPhantom();
     }
   };
+
+  // Warn about unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   if (loading) {
     return (
@@ -131,6 +217,8 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
     );
   }
 
+  const hasErrors = Object.keys(validationErrors).length > 0;
+
   return (
     <div className="min-h-screen bg-background">
       <TradingHeader
@@ -157,11 +245,37 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                 </p>
               </div>
             </div>
-            <Button onClick={handleSave} disabled={saving} variant="glow">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-              Save Settings
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasUnsavedChanges && (
+                <Badge variant="outline" className="text-warning border-warning/50">
+                  Unsaved changes
+                </Badge>
+              )}
+              <Button 
+                onClick={handleSave} 
+                disabled={saving || hasErrors} 
+                variant="glow"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                Save Settings
+              </Button>
+            </div>
           </div>
+
+          {/* Validation Errors Banner */}
+          {hasErrors && (
+            <div className="mb-6 p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="w-5 h-5" />
+                <span className="font-medium">Please fix the following errors:</span>
+              </div>
+              <ul className="mt-2 ml-7 list-disc text-sm text-destructive/80">
+                {Object.entries(validationErrors).map(([field, error]) => (
+                  <li key={field}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="grid gap-6">
             {/* Liquidity Settings */}
@@ -182,7 +296,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     </div>
                     <Slider
                       value={[settings.min_liquidity]}
-                      onValueChange={([v]) => updateField('min_liquidity', v)}
+                      onValueChange={([v]) => debouncedUpdateField('min_liquidity', v)}
                       min={50}
                       max={1000}
                       step={10}
@@ -191,6 +305,9 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     <p className="text-xs text-muted-foreground mt-2">
                       Bot only buys tokens with at least this much liquidity
                     </p>
+                    {validationErrors.min_liquidity && (
+                      <p className="text-xs text-destructive mt-1">{validationErrors.min_liquidity}</p>
+                    )}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
@@ -199,7 +316,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                       <div className="flex items-center justify-between mt-2">
                         <Slider
                           value={[settings.trade_amount * 10]}
-                          onValueChange={([v]) => updateField('trade_amount', v / 10)}
+                          onValueChange={([v]) => debouncedUpdateField('trade_amount', v / 10)}
                           min={1}
                           max={50}
                           step={1}
@@ -209,13 +326,16 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                           {settings.trade_amount}
                         </span>
                       </div>
+                      {validationErrors.trade_amount && (
+                        <p className="text-xs text-destructive mt-1">{validationErrors.trade_amount}</p>
+                      )}
                     </div>
                     <div>
                       <Label htmlFor="max_concurrent">Max Concurrent Trades</Label>
                       <div className="flex items-center justify-between mt-2">
                         <Slider
                           value={[settings.max_concurrent_trades]}
-                          onValueChange={([v]) => updateField('max_concurrent_trades', v)}
+                          onValueChange={([v]) => debouncedUpdateField('max_concurrent_trades', v)}
                           min={1}
                           max={10}
                           step={1}
@@ -225,6 +345,9 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                           {settings.max_concurrent_trades}
                         </span>
                       </div>
+                      {validationErrors.max_concurrent_trades && (
+                        <p className="text-xs text-destructive mt-1">{validationErrors.max_concurrent_trades}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -285,7 +408,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     </div>
                     <Slider
                       value={[settings.profit_take_percentage]}
-                      onValueChange={([v]) => updateField('profit_take_percentage', v)}
+                      onValueChange={([v]) => debouncedUpdateField('profit_take_percentage', v)}
                       min={10}
                       max={500}
                       step={5}
@@ -294,6 +417,9 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     <p className="text-xs text-muted-foreground mt-2">
                       Auto-sell when profit reaches this percentage
                     </p>
+                    {validationErrors.profit_take_percentage && (
+                      <p className="text-xs text-destructive mt-1">{validationErrors.profit_take_percentage}</p>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-3">
@@ -305,7 +431,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     </div>
                     <Slider
                       value={[settings.stop_loss_percentage]}
-                      onValueChange={([v]) => updateField('stop_loss_percentage', v)}
+                      onValueChange={([v]) => debouncedUpdateField('stop_loss_percentage', v)}
                       min={5}
                       max={50}
                       step={1}
@@ -314,6 +440,9 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     <p className="text-xs text-muted-foreground mt-2">
                       Auto-sell when loss reaches this percentage
                     </p>
+                    {validationErrors.stop_loss_percentage && (
+                      <p className="text-xs text-destructive mt-1">{validationErrors.stop_loss_percentage}</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -333,7 +462,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                   {PRIORITY_OPTIONS.map((option) => (
                     <button
                       key={option.value}
-                      onClick={() => updateField('priority', option.value)}
+                      onClick={() => immediateUpdateField('priority', option.value)}
                       className={`p-4 rounded-lg border-2 text-left transition-all ${
                         settings.priority === option.value
                           ? 'border-primary bg-primary/10'
@@ -383,6 +512,9 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     );
                   })}
                 </div>
+                {validationErrors.category_filters && (
+                  <p className="text-xs text-destructive mt-2">{validationErrors.category_filters}</p>
+                )}
               </CardContent>
             </Card>
 
@@ -432,7 +564,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                     <Shield className="h-5 w-5 text-success" />
                     Whitelist
                   </CardTitle>
-                  <CardDescription>Priority tokens</CardDescription>
+                  <CardDescription>Prioritized tokens</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex gap-2">
@@ -452,7 +584,7 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
                       <p className="text-sm text-muted-foreground">No tokens whitelisted</p>
                     ) : (
                       settings.token_whitelist.map((token) => (
-                        <Badge key={token} variant="outline" className="gap-1 font-mono text-xs border-success/50 text-success">
+                        <Badge key={token} variant="outline" className="gap-1 font-mono text-xs bg-success/20 text-success border-success/30 hover:bg-success/30">
                           {token.slice(0, 6)}...{token.slice(-4)}
                           <button onClick={() => removeFromWhitelist(token)}>
                             <X className="h-3 w-3" />
@@ -470,7 +602,5 @@ const MemeSniperSettings = forwardRef<HTMLDivElement, object>(function MemeSnipe
     </div>
   );
 });
-
-MemeSniperSettings.displayName = 'MemeSniperSettings';
 
 export default MemeSniperSettings;
