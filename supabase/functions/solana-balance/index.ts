@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Fallback public RPCs for when primary hits rate limits
+const FALLBACK_RPCS = [
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-mainnet.g.alchemy.com/v2/demo",
+  "https://rpc.ankr.com/solana",
+  "https://solana.public-rpc.com",
+];
+
 interface BalanceRequest {
   publicKey: string;
 }
@@ -28,11 +36,36 @@ async function getBalanceLamports(rpcUrl: string, publicKey: string): Promise<nu
 
   const data = await response.json();
   if (data?.error) {
+    // Check for rate limit error
+    if (data.error?.code === -32429 || data.error?.message?.includes("max usage")) {
+      throw new Error("RATE_LIMITED");
+    }
     throw new Error(data.error?.message || "RPC returned an error");
   }
 
   const lamports = Number(data?.result?.value ?? 0);
   return Number.isFinite(lamports) ? lamports : 0;
+}
+
+async function getBalanceWithFallback(primaryRpc: string, publicKey: string): Promise<number> {
+  const rpcsToTry = [primaryRpc, ...FALLBACK_RPCS.filter(r => r !== primaryRpc)];
+  
+  for (let i = 0; i < rpcsToTry.length; i++) {
+    const rpc = rpcsToTry[i];
+    try {
+      return await getBalanceLamports(rpc, publicKey);
+    } catch (error: any) {
+      const isRateLimit = error.message === "RATE_LIMITED" || error.message?.includes("429");
+      console.log(`[SolanaBalance] RPC ${i + 1}/${rpcsToTry.length} failed: ${error.message}`);
+      
+      if (i === rpcsToTry.length - 1) {
+        throw new Error(isRateLimit ? "All RPCs rate limited" : error.message);
+      }
+      // Continue to next RPC
+    }
+  }
+  
+  throw new Error("No RPC available");
 }
 
 Deno.serve(async (req) => {
@@ -87,7 +120,7 @@ Deno.serve(async (req) => {
 
     console.log(`[SolanaBalance] user=${user.id} rpcHost=${rpcHost}`);
 
-    const balanceLamports = await getBalanceLamports(rpcUrl, body.publicKey);
+    const balanceLamports = await getBalanceWithFallback(rpcUrl, body.publicKey);
     const balanceSol = balanceLamports / 1e9;
 
     return new Response(
